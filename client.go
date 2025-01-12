@@ -422,11 +422,18 @@ func (c *Client) AuthenticateDevice(id string, create *bool, username *string, v
 		return nil, err
 	}
 
+	created := false
+	if apiSession.Created != nil {
+		created = *apiSession.Created
+	} else if create != nil {
+		created = *create
+	}
+
 	// Return a new Session object
 	return &Session{
 		Token:        *apiSession.Token,
 		RefreshToken: *apiSession.RefreshToken,
-		Created:      *apiSession.Created,
+		Created:      created,
 	}, nil
 }
 
