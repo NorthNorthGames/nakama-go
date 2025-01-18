@@ -51,6 +51,8 @@ jobs:
               /nakama/nakama migrate up --database.address postgres:localdb@postgres:5432/nakama &&
               exec /nakama/nakama --name nakama1 --database.address postgres:localdb@postgres:5432/nakama --logger.level DEBUG --session.token_expiry_sec 7200
             "
+          
+            sleep 10
 
 #          echo "Waiting for the Nakama container to be healthy..."
 #          retries=0
