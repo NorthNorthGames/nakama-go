@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  pull_request:
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Start PostgreSQL container
+        run: |
+          docker network create nakama-network || true
+          docker run -d \
+            --name postgres \
+            --network nakama-network \
+            -e POSTGRES_DB=nakama \
+            -e POSTGRES_PASSWORD=localdb \
+            -v postgres_data:/var/lib/postgresql/data \
+            -p 5432:5432 \
+            postgres:12.2-alpine
+
+          echo "Waiting for the PostgreSQL container to be healthy..."
+          retries=0
+          until docker exec postgres pg_isready -U postgres -d nakama || [ $retries -eq 10 ]; do
+            echo "PostgreSQL is not ready yet. Retrying..."
+            retries=$((retries + 1))
+            sleep 3
+          done
+          if [ $retries -eq 10 ]; then
+            echo "PostgreSQL failed to become healthy"
+            exit 1
+          fi
+
+      - name: Start Nakama container
+        run: |
+          docker run -d \
+            --name nakama \
+            --network nakama-network \
+            --link postgres:db \
+            --restart always \
+            -v ${{ github.workspace }}:/nakama/data \
+            -p 7349:7349 \
+            -p 7350:7350 \
+            -p 7351:7351 \
+            registry.heroiclabs.com/heroiclabs/nakama:3.22.0 \
+            sh -ecx "
+              /nakama/nakama migrate up --database.address postgres:localdb@postgres:5432/nakama &&
+              exec /nakama/nakama --name nakama1 --database.address postgres:localdb@postgres:5432/nakama --logger.level DEBUG --session.token_expiry_sec 7200
+            "
+          
+            sleep 10
+
+#          echo "Waiting for the Nakama container to be healthy..."
+#          retries=0
+#          until docker exec nakama /nakama/nakama healthcheck || [ $retries -eq 5 ]; do
+#            echo "Nakama is not ready yet. Retrying..."
+#            retries=$((retries + 1))
+#            sleep 10
+#          done
+#          if [ $retries -eq 5 ]; then
+#            echo "Nakama failed to become healthy"
+#            exit 1
+#          fi
+
+      - name: Verify running containers
+        run: docker ps
+  
+  test:
+    runs-on: ubuntu-latest
+    needs: docker
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: 1.23
+
+      - name: Install dependencies
+        run: go mod tidy
+
+      - name: Run tests
+        run: go test ./...

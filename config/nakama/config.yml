@@ -1,0 +1,11 @@
+name: nakama
+data_dir: "./config/nakama/"
+
+console:
+  port: 7351
+  username: "admin"
+  password: "password"
+
+database:
+  address:
+    - "postgres:localdb@postgres:5432/nakama"
