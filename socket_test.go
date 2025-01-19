@@ -14,7 +14,7 @@ func TestCreateMatch(t *testing.T) {
 	session, _ := client.AuthenticateDevice(deviceId, &create, nil, nil)
 
 	timeout := 1000
-	socket := client.CreateSocket(false, false, nil, &timeout)
+	socket := client.CreateSocket(false, true, nil, &timeout)
 	connect, err := socket.Connect(*session, nil, &timeout)
 	if err != nil {
 		t.Error(err)
