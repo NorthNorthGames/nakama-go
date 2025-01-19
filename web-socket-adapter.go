@@ -14,10 +14,10 @@ import (
 // WebSocketAdapter is a text-based WebSocket adapter for transmitting payloads over UTF-8.
 type WebSocketAdapter struct {
 	socket    *websocket.Conn
-	onClose   func(event error)
-	onError   func(event error)
+	onClose   func(err error)
+	onError   func(err error)
 	onMessage func(message []byte)
-	onOpen    func(event interface{})
+	onOpen    func(event interface{}) error
 	mu        sync.Mutex // To guard websocket connection reference
 }
 
@@ -65,10 +65,6 @@ func (w *WebSocketAdapter) Connect(scheme, host, port string, createStatus bool,
 		return err
 	}
 
-	if w.onOpen != nil {
-		w.onOpen(nil)
-	}
-
 	go w.listen()
 
 	return nil
@@ -111,13 +107,9 @@ func (w *WebSocketAdapter) listen() {
 			w.mu.Unlock()
 
 			if socket != nil {
-				if w.onError != nil {
-					w.onError(err)
-				}
-				websocket.CloseStatus(err)
-				if websocket.CloseStatus(err) != websocket.StatusNormalClosure && w.onClose != nil {
-					w.onClose(nil)
-				}
+				closeStatus := websocket.CloseStatus(err)
+				fmt.Printf("WebSocket closed with status: %d\n", closeStatus)
+
 				w.Close()
 			}
 			break
@@ -125,9 +117,7 @@ func (w *WebSocketAdapter) listen() {
 
 		var decodedMessage map[string]interface{}
 		if err := json.Unmarshal(message, &decodedMessage); err != nil {
-			if w.onError != nil {
-				w.onError(err)
-			}
+			fmt.Printf("Error unmarshalling WebSocket message: %v\n", err)
 			continue
 		}
 
@@ -135,13 +125,11 @@ func (w *WebSocketAdapter) listen() {
 		decodeReceivedData(decodedMessage, "match_data")
 		decodeReceivedData(decodedMessage, "party_data")
 
-		if w.onMessage != nil {
-			messageBytes, err := json.Marshal(decodedMessage)
-			if err == nil {
-				w.onMessage(messageBytes)
-			} else if w.onError != nil {
-				w.onError(err)
-			}
+		messageBytes, err := json.Marshal(decodedMessage)
+		if err == nil {
+			w.onMessage(messageBytes)
+		} else if w.onError != nil {
+			w.onError(err)
 		}
 	}
 }

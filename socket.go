@@ -350,9 +350,16 @@ type SocketError struct {
 	Message string `json:"message"` // A message in English to help developers debug the response
 }
 
+type Message struct {
+	Cid           *string         `json:"cid"`
+	Error         *error          `json:"error"`
+	Notifications *[]Notification `json:"notifications"`
+	Payload       interface{}     `json:"payload"`
+}
+
 // DefaultSocket constants
 const (
-	DefaultHeartbeatTimeoutMs = 10000
+	DefaultHeartbeatTimeoutMs = 1000
 	DefaultSendTimeoutMs      = 10000
 	DefaultConnectTimeoutMs   = 30000
 )
@@ -426,22 +433,80 @@ func (socket *DefaultSocket) Connect(session Session, createStatus *bool, timeou
 		return nil, err
 	}
 
-	// Set a timeout for the connection process
-	resChan := make(chan error, 1)
-	go func() {
-		time.Sleep(time.Duration(*timeoutMs) * time.Millisecond)
-		resChan <- errors.New("socket connection timed out")
-	}()
+	socket.Adapter.onClose = func(err error) {
+		socket.OnDisconnect(err)
+	}
 
-	select {
-	case err := <-resChan:
-		if err != nil {
-			socket.Adapter.Close()
-			return nil, err
+	socket.Adapter.onError = func(err error) {
+		socket.OnError(err)
+	}
+
+	socket.Adapter.onMessage = func(message []byte) {
+		if socket.Verbose == true {
+			fmt.Println("Received message:", string(message))
+		}
+
+		var messageObject *Message
+		if err := json.Unmarshal(message, &messageObject); err != nil {
+			if socket.Verbose {
+				fmt.Println("Failed to unmarshal message into custom object:", err)
+			}
+			return
+		}
+
+		if messageObject == nil {
+			if socket.Verbose {
+				fmt.Println("Received empty message")
+			}
+		}
+
+		if messageObject.Cid == nil {
+			if messageObject.Notifications != nil {
+
+			}
+		} else {
+			executor := socket.cIds[*messageObject.Cid]
+			if executor == nil {
+				if socket.Verbose {
+					log.Printf("No promise executor for message: %v\n", messageObject)
+				}
+				return
+			}
+
+			delete(socket.cIds, *messageObject.Cid)
+
+			if messageObject.Error != nil {
+				executor.Reject(*messageObject.Error)
+			} else {
+				executor.Resolve(messageObject)
+			}
 		}
 	}
 
-	socket.pingPong()
+	go func() {
+		socket.Adapter.onOpen = func(event interface{}) error {
+			log.Printf("Socket opened: %v\n", event)
+
+			socket.pingPong()
+
+			// Set a timeout for the connection process
+			resChan := make(chan error, 1)
+			go func() {
+				time.Sleep(time.Duration(*timeoutMs) * time.Millisecond)
+				resChan <- errors.New("socket connection timed out")
+			}()
+
+			select {
+			case err := <-resChan:
+				if err != nil {
+					socket.Adapter.Close()
+					return err
+				}
+			}
+
+			return nil
+		}
+	}()
 
 	return &session, nil
 }
@@ -515,12 +580,12 @@ func (socket *DefaultSocket) HandleMessage(message []byte) {
 // Send sends a message to the WebSocket server with optional timeout.
 func (socket *DefaultSocket) Send(message interface{}, sendTimeout int) error {
 	if !socket.Adapter.IsOpen() {
-		return errors.New("Socket connection is not established")
+		return errors.New("socket connection is not established")
 	}
 
 	data, err := json.Marshal(message)
 	if err != nil {
-		return fmt.Errorf("Failed to encode message: %v", err)
+		return fmt.Errorf("failed to encode message: %v", err)
 	}
 
 	cid := socket.GenerateCID()
@@ -537,7 +602,10 @@ func (socket *DefaultSocket) Send(message interface{}, sendTimeout int) error {
 		},
 	}
 
-	socket.Adapter.Send(data)
+	err = socket.Adapter.Send(data)
+	if err != nil {
+		return err
+	}
 
 	// Set a timeout for the send operation
 	go func(cid string) {
@@ -967,12 +1035,14 @@ func (socket *DefaultSocket) WriteChatMessage(channelID string, content interfac
 func (socket *DefaultSocket) pingPong() {
 	ticker := time.NewTicker(time.Duration(socket.HeartbeatTimeoutMs) * time.Millisecond)
 	defer ticker.Stop()
+	log.Println("before pingpong socket is nil:", socket.Adapter.socket == nil)
 
 	for {
 		select {
 		case <-ticker.C:
 			ping := map[string]interface{}{"ping": struct{}{}}
 			if err := socket.Send(ping, socket.HeartbeatTimeoutMs); err != nil {
+				log.Println("after pingpong socket is nil:", socket.Adapter.socket == nil)
 				log.Println("Failed to send ping:", err)
 				if socket.Adapter.IsOpen() {
 					socket.OnHeartbeatTimeout()
