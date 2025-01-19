@@ -371,7 +371,7 @@ type DefaultSocket struct {
 }
 
 // NewDefaultSocket creates an instance of DefaultSocket.
-func NewDefaultSocket(host, port string, useSSL, verbose bool, adapter *WebSocketAdapterText, sendTimeoutMs *int) DefaultSocket {
+func NewDefaultSocket(host, port string, useSSL, verbose bool, adapter *WebSocketAdapter, sendTimeoutMs *int) DefaultSocket {
 	if adapter == nil {
 		adapter = NewWebSocketAdapterText()
 	}
@@ -385,7 +385,7 @@ func NewDefaultSocket(host, port string, useSSL, verbose bool, adapter *WebSocke
 		Port:               port,
 		UseSSL:             useSSL,
 		Verbose:            verbose,
-		Adapter:            adapter,
+		Adapter:            *adapter,
 		SendTimeoutMs:      *sendTimeoutMs,
 		HeartbeatTimeoutMs: DefaultHeartbeatTimeoutMs,
 		cIds:               make(map[string]*PromiseExecutor),
@@ -425,16 +425,6 @@ func (socket *DefaultSocket) Connect(session Session, createStatus *bool, timeou
 	if err != nil {
 		return nil, err
 	}
-
-	socket.Adapter.SetOnClose(func(err error) {
-		socket.OnDisconnect(err)
-	})
-	socket.Adapter.SetOnError(func(err error) {
-		socket.OnError(err)
-	})
-	socket.Adapter.SetOnMessage(func(message []byte) {
-		socket.HandleMessage(message)
-	})
 
 	// Set a timeout for the connection process
 	resChan := make(chan error, 1)
