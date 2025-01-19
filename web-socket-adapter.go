@@ -1,13 +1,14 @@
 package nakama
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/url"
 	"sync"
 
-	"github.com/gorilla/websocket"
+	"github.com/coder/websocket"
 )
 
 // WebSocketAdapter defines an interface for a websocket adapter.
@@ -43,7 +44,7 @@ func NewWebSocketAdapterText() *WebSocketAdapterText {
 func (w *WebSocketAdapterText) IsOpen() bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return w.socket != nil && w.socket.CloseHandler() == nil
+	return w.socket != nil
 }
 
 // Close closes the WebSocket connection.
@@ -51,7 +52,7 @@ func (w *WebSocketAdapterText) Close() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if w.socket != nil {
-		_ = w.socket.Close()
+		_ = w.socket.Close(websocket.StatusNormalClosure, "Client closed connection")
 		w.socket = nil
 	}
 }
@@ -70,7 +71,10 @@ func (w *WebSocketAdapterText) Connect(scheme, host, port string, createStatus b
 	)
 
 	var err error
-	w.socket, _, err = websocket.DefaultDialer.Dial(urlStr, nil)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	w.socket, _, err = websocket.Dial(ctx, urlStr, nil)
 	if err != nil {
 		return err
 	}
@@ -104,7 +108,9 @@ func (w *WebSocketAdapterText) Send(message interface{}) error {
 		return err
 	}
 
-	return w.socket.WriteMessage(websocket.TextMessage, msgBytes)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	return w.socket.Write(ctx, websocket.MessageText, msgBytes)
 }
 
 // SetOnClose sets the handler for WebSocket close events.
@@ -129,8 +135,10 @@ func (w *WebSocketAdapterText) SetOnOpen(handler func(event interface{})) {
 
 // listen listens for messages or errors from the WebSocket server.
 func (w *WebSocketAdapterText) listen() {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	for {
-		_, message, err := w.socket.ReadMessage()
+		_, message, err := w.socket.Read(ctx)
 		if err != nil {
 			w.mu.Lock()
 			socket := w.socket
@@ -140,7 +148,8 @@ func (w *WebSocketAdapterText) listen() {
 				if w.onError != nil {
 					w.onError(err)
 				}
-				if websocket.IsUnexpectedCloseError(err) && w.onClose != nil {
+				websocket.CloseStatus(err)
+				if websocket.CloseStatus(err) != websocket.StatusNormalClosure && w.onClose != nil {
 					w.onClose(nil)
 				}
 				w.Close()

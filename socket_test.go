@@ -13,23 +13,24 @@ func TestCreateMatch(t *testing.T) {
 
 	session, _ := client.AuthenticateDevice(deviceId, &create, nil, nil)
 
-	socket := client.CreateSocket(false, false, nil, nil)
-	//connect, err := socket.Connect(*session, nil, nil)
-	//if err != nil {
-	//	t.Error(err)
-	//}
-	//
-	//if connect == nil {
-	//	t.Error("Connect is nil")
-	//}
+	timeout := 1000
+	socket := client.CreateSocket(false, false, nil, &timeout)
+	connect, err := socket.Connect(*session, nil, &timeout)
+	if err != nil {
+		t.Error(err)
+	}
 
-	//match, err := socket.CreateMatch(nil)
-	//
-	//if err != nil {
-	//	t.Error(err)
-	//}
-	//
-	//if match == nil {
-	//	t.Error("Match is nil")
-	//}
+	if connect == nil {
+		t.Error("Connect is nil")
+	}
+
+	match, err := socket.CreateMatch(nil)
+
+	if err != nil {
+		t.Error(err)
+	}
+
+	if match == nil {
+		t.Error("Match is nil")
+	}
 }
