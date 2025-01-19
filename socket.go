@@ -371,9 +371,9 @@ type DefaultSocket struct {
 }
 
 // NewDefaultSocket creates an instance of DefaultSocket.
-func NewDefaultSocket(host, port string, useSSL, verbose bool, adapter *WebSocketAdapterText, sendTimeoutMs *int) DefaultSocket {
+func NewDefaultSocket(host, port string, useSSL, verbose bool, adapter *WebSocketAdapter, sendTimeoutMs *int) DefaultSocket {
 	if adapter == nil {
-		adapter = NewWebSocketAdapterText()
+		adapter = NewWebSocketAdapter()
 	}
 	if sendTimeoutMs == nil {
 		defaultTimeout := DefaultSendTimeoutMs
@@ -385,7 +385,7 @@ func NewDefaultSocket(host, port string, useSSL, verbose bool, adapter *WebSocke
 		Port:               port,
 		UseSSL:             useSSL,
 		Verbose:            verbose,
-		Adapter:            adapter,
+		Adapter:            *adapter,
 		SendTimeoutMs:      *sendTimeoutMs,
 		HeartbeatTimeoutMs: DefaultHeartbeatTimeoutMs,
 		cIds:               make(map[string]*PromiseExecutor),
@@ -426,15 +426,7 @@ func (socket *DefaultSocket) Connect(session Session, createStatus *bool, timeou
 		return nil, err
 	}
 
-	socket.Adapter.SetOnClose(func(err error) {
-		socket.OnDisconnect(err)
-	})
-	socket.Adapter.SetOnError(func(err error) {
-		socket.OnError(err)
-	})
-	socket.Adapter.SetOnMessage(func(message []byte) {
-		socket.HandleMessage(message)
-	})
+	//socket.pingPong()
 
 	// Set a timeout for the connection process
 	resChan := make(chan error, 1)
@@ -443,15 +435,13 @@ func (socket *DefaultSocket) Connect(session Session, createStatus *bool, timeou
 		resChan <- errors.New("socket connection timed out")
 	}()
 
-	select {
-	case err := <-resChan:
-		if err != nil {
-			socket.Adapter.Close()
-			return nil, err
-		}
-	}
-
-	socket.pingPong()
+	//select {
+	//case err := <-resChan:
+	//	if err != nil {
+	//		socket.Adapter.Close()
+	//		return nil, err
+	//	}
+	//}
 
 	return &session, nil
 }
@@ -462,7 +452,7 @@ func (socket *DefaultSocket) Disconnect(fireDisconnectEvent bool) {
 		socket.Adapter.Close()
 	}
 	if fireDisconnectEvent {
-		socket.OnDisconnect(fmt.Errorf("Socket disconnected"))
+		socket.OnDisconnect(fmt.Errorf("socket disconnected"))
 	}
 }
 
@@ -525,12 +515,16 @@ func (socket *DefaultSocket) HandleMessage(message []byte) {
 // Send sends a message to the WebSocket server with optional timeout.
 func (socket *DefaultSocket) Send(message interface{}, sendTimeout int) error {
 	if !socket.Adapter.IsOpen() {
-		return errors.New("Socket connection is not established")
+		return errors.New("socket connection is not established")
 	}
 
 	data, err := json.Marshal(message)
 	if err != nil {
-		return fmt.Errorf("Failed to encode message: %v", err)
+		return fmt.Errorf("failed to encode message: %v", err)
+	} else {
+		if socket.Verbose {
+			fmt.Println("Sending message:", string(data))
+		}
 	}
 
 	cid := socket.GenerateCID()
@@ -547,7 +541,11 @@ func (socket *DefaultSocket) Send(message interface{}, sendTimeout int) error {
 		},
 	}
 
-	socket.Adapter.Send(data)
+	err = socket.Adapter.Send(data)
+	if err != nil {
+		fmt.Println("Error while sending message:", err)
+		return err
+	}
 
 	// Set a timeout for the send operation
 	go func(cid string) {
@@ -573,6 +571,8 @@ func (socket *DefaultSocket) CreateMatch(name *string) (*Match, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	fmt.Println("Response:", response)
 
 	if match, ok := response["match"].(*Match); ok {
 		return match, nil
@@ -990,6 +990,7 @@ func (socket *DefaultSocket) pingPong() {
 				}
 				return
 			}
+			return
 		}
 	}
 }
