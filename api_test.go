@@ -1,8 +1,9 @@
 package nakama
 
 import (
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func setupApi(t *testing.T) Client {

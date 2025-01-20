@@ -1,8 +1,9 @@
 package nakama
 
 import (
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func setupSocket(t *testing.T) (Client, Session) {
@@ -32,7 +33,7 @@ func createSocket(t *testing.T, client Client, session Session) (DefaultSocket, 
 	timeout := 1000
 	socket := client.CreateSocket(false, true, nil, &timeout)
 
-	assert.IsType(t, &DefaultSocket{}, socket)
+	assert.IsType(t, DefaultSocket{}, socket)
 
 	connect, err := socket.Connect(session, nil, &timeout)
 
