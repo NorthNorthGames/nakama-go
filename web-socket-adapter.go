@@ -66,14 +66,13 @@ func (w *WebSocketAdapter) Connect(scheme, host, port string, createStatus bool,
 		return err
 	}
 
-	go w.listen()
+	//go w.listen()
 
 	return nil
 }
 
 // Send sends a message through the WebSocket connection.
 func (w *WebSocketAdapter) Send(message interface{}) error {
-	fmt.Printf("%v", message)
 	w.mu.Lock()
 	defer w.mu.Unlock()
 

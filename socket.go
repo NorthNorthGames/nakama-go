@@ -623,13 +623,10 @@ func (socket *DefaultSocket) Read() (map[string]interface{}, error) {
 		return nil, errors.New("socket connection is not established")
 	}
 
-	fmt.Println("Reading message...")
 	message, err := socket.Adapter.Read()
 	if err != nil {
 		return nil, fmt.Errorf("failed to read message from socket: %w", err)
 	}
-
-	fmt.Println("Message:", string(message))
 
 	var response map[string]interface{}
 	if err := json.Unmarshal(message, &response); err != nil {
@@ -654,13 +651,23 @@ func (socket *DefaultSocket) CreateMatch(name *string) (*Match, error) {
 	}
 
 	response, err := socket.Read()
-
-	if socket.Verbose {
-		fmt.Println("Response received:", response)
+	if err != nil {
+		log.Printf("Failed to read response: %v\n", err)
+		return nil, err
 	}
 
-	if match, ok := response["match"].(*Match); ok {
-		return match, nil
+	if matchData, ok := response["match"]; ok {
+		matchBytes, err := json.Marshal(matchData)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize match data: %w", err)
+		}
+
+		var match Match
+		if err := json.Unmarshal(matchBytes, &match); err != nil {
+			return nil, fmt.Errorf("failed to deserialize match data into Match struct: %w", err)
+		}
+
+		return &match, nil
 	}
 
 	return nil, fmt.Errorf("invalid response format: missing or invalid match field")
@@ -742,14 +749,29 @@ func (socket *DefaultSocket) JoinMatch(matchID, token *string, metadata *map[str
 		request["match_join"].(map[string]interface{})["match_id"] = matchID
 	}
 
-	var response map[string]interface{}
 	err := socket.Send(request, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	if match, ok := response["match"].(*Match); ok {
-		return match, nil
+	response, err := socket.Read()
+	if err != nil {
+		log.Printf("Failed to read response: %v\n", err)
+		return nil, err
+	}
+
+	if matchData, ok := response["match"]; ok {
+		matchBytes, err := json.Marshal(matchData)
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize match data: %w", err)
+		}
+
+		var match Match
+		if err := json.Unmarshal(matchBytes, &match); err != nil {
+			return nil, fmt.Errorf("failed to deserialize match data into Match struct: %w", err)
+		}
+
+		return &match, nil
 	}
 
 	return nil, fmt.Errorf("invalid response format: missing or invalid match field")
