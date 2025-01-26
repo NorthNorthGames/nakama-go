@@ -588,16 +588,11 @@ func (socket *DefaultSocket) Send(message interface{}, sendTimeout *int) error {
 		return errors.New("socket connection is not established")
 	}
 
-	data, err := json.Marshal(message)
-	if err != nil {
-		return fmt.Errorf("failed to encode message: %v", err)
-	}
-
 	cid := socket.GenerateCID()
 	socket.cIds[cid] = &PromiseExecutor{
 		Resolve: func(result interface{}) {
 			if socket.Verbose {
-				fmt.Println("Message sent successfully:", string(data))
+				fmt.Println("Message sent successfully")
 			}
 		},
 		Reject: func(e error) {
@@ -607,7 +602,7 @@ func (socket *DefaultSocket) Send(message interface{}, sendTimeout *int) error {
 		},
 	}
 
-	err = socket.Adapter.Send(data)
+	err := socket.Adapter.Send(message)
 	if err != nil {
 		log.Print(err)
 		return err
@@ -622,6 +617,28 @@ func (socket *DefaultSocket) Send(message interface{}, sendTimeout *int) error {
 	return nil
 }
 
+// ReadResponse reads and parses the next response from the WebSocket connection.
+func (socket *DefaultSocket) Read() (map[string]interface{}, error) {
+	if !socket.Adapter.IsOpen() {
+		return nil, errors.New("socket connection is not established")
+	}
+
+	fmt.Println("Reading message...")
+	message, err := socket.Adapter.Read()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read message from socket: %w", err)
+	}
+
+	fmt.Println("Message:", string(message))
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(message, &response); err != nil {
+		return nil, fmt.Errorf("failed to parse socket response: %w", err)
+	}
+
+	return response, nil
+}
+
 // CreateMatch sends a request to create a match and returns the created Match.
 func (socket *DefaultSocket) CreateMatch(name *string) (*Match, error) {
 	request := map[string]interface{}{
@@ -631,11 +648,12 @@ func (socket *DefaultSocket) CreateMatch(name *string) (*Match, error) {
 		request["match_create"].(map[string]interface{})["name"] = name
 	}
 
-	var response map[string]interface{}
 	err := socket.Send(request, nil)
 	if err != nil {
 		return nil, err
 	}
+
+	response, err := socket.Read()
 
 	if socket.Verbose {
 		fmt.Println("Response received:", response)

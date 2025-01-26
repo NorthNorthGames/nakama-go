@@ -22,7 +22,8 @@ func TestCreateMatch(t *testing.T) {
 	socket, connect := createSocket(t, client, session)
 	session = connect
 
-	match, err := socket.CreateMatch(nil)
+	matchName := "Test"
+	match, err := socket.CreateMatch(&matchName)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, match)
